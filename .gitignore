@@ -1,0 +1,13 @@
+.DS_Store
+Thumbs.db
+*.log
+.env
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+node_modules/
+vendor/
+composer.lock
+.phpunit.result.cache
