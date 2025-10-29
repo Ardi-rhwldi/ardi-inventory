@@ -72,10 +72,7 @@ $pageTitle = 'Login';
                                     </div>
                                 </div>
                                 
-                                <div class="mb-4">
-                                    <label class="form-label">Password</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                <div class=fan class="input-group-text"><i class="bi bi-lock"></i></span>
                                         <input type="password" name="password" class="form-control" required>
                                     </div>
                                 </div>
