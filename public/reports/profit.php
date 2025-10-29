@@ -1,8 +1,12 @@
 <?php
 require_once __DIR__ . '/../../config/config.php';
+// Asumsikan fungsi helper (formatDate, formatRupiah) ada di config.php
 require_once __DIR__ . '/../../models/SaleTransaction.php';
 
+// Pastikan fungsi helper tersedia di sini. Jika tidak, tambahkan require_once untuk file helper Anda.
+
 requireLogin();
+requireAdmin();
 
 $pageTitle = 'Laporan Laba Kotor';
 $saleModel = new SaleTransaction();
@@ -10,7 +14,8 @@ $saleModel = new SaleTransaction();
 $startDate = $_GET['start_date'] ?? date('Y-m-01');
 $endDate = $_GET['end_date'] ?? date('Y-m-d');
 
-$profitReport = $saleModel->getProfitReport($startDate, $endDate);
+// Baris ini yang sebelumnya menyebabkan error 1064 karena masalah syntax di model
+$profitReport = $saleModel->getProfitReport($startDate, $endDate); 
 
 include __DIR__ . '/../../views/layouts/header.php';
 ?>

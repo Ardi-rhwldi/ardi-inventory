@@ -13,6 +13,13 @@ class Supplier extends BaseModel {
     }
     
     /**
+     * Get ALL active suppliers (Diperlukan oleh form.php untuk dropdown)
+     */
+    public function getAllActiveSuppliers() {
+        // Asumsi 'is_active' menggunakan integer (1)
+        return $this->findWhere('is_active = ?', [1]);
+    }
+    /**
      * Search suppliers
      */
     public function search($keyword) {

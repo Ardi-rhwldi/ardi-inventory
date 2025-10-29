@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/config.php';
 require_once __DIR__ . '/../../models/Item.php';
 
 requireLogin();
+requireAdmin();
 
 $pageTitle = 'Laporan Stok';
 $itemModel = new Item();

@@ -3,27 +3,31 @@
  * Application Configuration
  */
 
-// Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Application settings
 define('APP_NAME', 'Sistem POS & Inventori');
 define('APP_VERSION', '1.0.0');
-define('BASE_URL', getenv('REPL_SLUG') ? 'https://' . getenv('REPL_SLUG') . '.' . getenv('REPL_OWNER') . '.repl.co' : 'http://localhost:5000');
 
-// Timezone
+// Sesuaikan dengan struktur project kamu (pakai folder public)
+define('BASE_URL', 'http://localhost/ardi-inventory/public');
+
 date_default_timezone_set('Asia/Jakarta');
 
-// Error reporting (disable in production)
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Include database configuration
-require_once __DIR__ . '/database.php';
+// Tambahkan ini di config/config.php
+function requireAdmin() {
+    if (!isLoggedIn() || $_SESSION['role'] !== 'admin') {
+        setFlashMessage('danger', 'Akses ditolak. Hanya Admin yang diizinkan.');
+        redirect(url('../public/pos/index.php')); // Atau ke halaman lain
+    }
+}
 
-// Helper functions
+require_once __DIR__ . '/../config/database.php'; // <- Sesuaikan jika config di luar folder public
+
 function redirect($url) {
     header('Location: ' . $url);
     exit();

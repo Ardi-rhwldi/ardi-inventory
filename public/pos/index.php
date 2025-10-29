@@ -4,7 +4,16 @@ require_once __DIR__ . '/../../models/Item.php';
 require_once __DIR__ . '/../../models/Customer.php';
 require_once __DIR__ . '/../../models/SaleTransaction.php';
 
-requireLogin();
+// Panggil requireLogin() (asumsi fungsi ini ada di config.php)
+if (function_exists('requireLogin')) {
+    requireLogin();
+} else {
+    session_start();
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: ' . url('login.php'));
+        exit;
+    }
+}
 
 $pageTitle = 'Sistem Kasir (POS)';
 $itemModel = new Item();
@@ -13,8 +22,49 @@ $customerModel = new Customer();
 $items = $itemModel->getItemsWithCategory();
 $customers = $customerModel->getActiveCustomers();
 
+// Asumsi formatRupiah() sudah dimuat via config.php, TIDAK BOLEH didefinisikan ulang di sini
+if (!function_exists('formatRupiah')) {
+    function formatRupiah($angka) {
+        return 'Rp ' . number_format($angka, 0, ',', '.');
+    }
+}
+
 include __DIR__ . '/../../views/layouts/header.php';
 ?>
+
+<style>
+    /* CSS untuk memastikan tampilan grid 3 kolom tetap utuh */
+    .pos-item-list .row {
+        display: flex; 
+        flex-wrap: wrap;
+    }
+    
+    /* Style untuk kotak hasil pencarian */
+    .search-results {
+        position: absolute;
+        z-index: 1000;
+        width: 100%;
+        background: #fff;
+        border: 1px solid #ccc;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .search-result-item {
+        padding: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+    }
+
+    .search-result-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .item-select-card {
+        cursor: pointer;
+    }
+</style>
 
 <div class="row mb-3">
     <div class="col-12">
@@ -29,7 +79,7 @@ include __DIR__ . '/../../views/layouts/header.php';
                 <i class="bi bi-search"></i> Pilih Barang
             </div>
             <div class="card-body">
-                <div class="mb-3 search-box">
+                <div class="mb-3 search-box" style="position: relative;">
                     <input type="text" id="searchItem" class="form-control form-control-lg" 
                            placeholder="Cari barang berdasarkan nama, SKU, atau barcode..." autofocus>
                     <div id="searchResults" class="search-results" style="display: none;"></div>
@@ -46,14 +96,14 @@ include __DIR__ . '/../../views/layouts/header.php';
                                  data-price="<?php echo $item['selling_price']; ?>"
                                  data-stock="<?php echo $item['stock_quantity']; ?>"
                                  data-unit="<?php echo $item['unit']; ?>">
-                                <div class="card h-100 item-select-card" style="cursor: pointer;">
+                                <div class="card h-100 item-select-card">
                                     <div class="card-body p-2">
                                         <h6 class="card-title mb-1" style="font-size: 0.9rem;">
                                             <?php echo htmlspecialchars($item['item_name']); ?>
                                         </h6>
                                         <p class="card-text mb-1">
                                             <small class="text-muted"><?php echo $item['sku']; ?></small><br>
-                                            <strong class="text-primary"><?php echo formatRupiah($item['selling_price']); ?></strong><br>
+                                            <strong class="text-primary"><?php echo formatRupiah($item['selling_price']); ?></strong>
                                             <small class="<?php echo $item['stock_quantity'] <= $item['min_stock'] ? 'text-danger' : 'text-success'; ?>">
                                                 Stok: <?php echo $item['stock_quantity']; ?> <?php echo $item['unit']; ?>
                                             </small>
@@ -166,6 +216,33 @@ include __DIR__ . '/../../views/layouts/footer.php';
 ?>
 
 <script>
+// =======================================================
+// PERBAIKAN UTAMA: DEFINISI JAVASCRIPT formatRupiah
+// =======================================================
+function formatRupiah(number) {
+    if (number === null || number === undefined || isNaN(number)) {
+        return 'Rp 0';
+    }
+    const rupiah = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+    }).format(number);
+    return rupiah;
+}
+// =======================================================
+
+// START: FUNGSI DEBOUNCE
+function debounce(func, timeout = 300) {
+    let timer;
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { func.apply(this, args); }, timeout);
+    };
+}
+// END: FUNGSI DEBOUNCE
+
+
 let cart = [];
 
 const searchItem = document.getElementById('searchItem');
@@ -188,12 +265,20 @@ const allItems = Array.from(document.querySelectorAll('.item-card')).map(el => (
     element: el
 }));
 
+// EVENT LISTENER UNTUK ITEM CARD
+allItems.forEach(item => {
+    item.element.addEventListener('click', function() {
+        addToCart(item.id);
+    });
+});
+
+
 searchItem.addEventListener('input', debounce(function() {
     const keyword = this.value.toLowerCase();
     
     if (keyword.length < 2) {
         searchResults.style.display = 'none';
-        itemGrid.style.display = 'block';
+        itemGrid.style.display = 'flex';
         allItems.forEach(item => item.element.style.display = 'block');
         return;
     }
@@ -228,29 +313,28 @@ searchResults.addEventListener('click', function(e) {
         addToCart(item.dataset.id);
         searchItem.value = '';
         searchResults.style.display = 'none';
-        itemGrid.style.display = 'block';
+        itemGrid.style.display = 'flex';
     }
 });
 
 document.addEventListener('click', function(e) {
     if (!searchItem.contains(e.target) && !searchResults.contains(e.target)) {
         searchResults.style.display = 'none';
-        itemGrid.style.display = 'block';
+        itemGrid.style.display = 'flex';
     }
 });
 
-itemGrid.addEventListener('click', function(e) {
-    const card = e.target.closest('.item-card');
-    if (card) {
-        addToCart(card.dataset.id);
-    }
-});
-
+// FUNGSI INTI: addToCart
 function addToCart(itemId) {
-    const item = allItems.find(i => i.id == itemId);
-    if (!item) return;
+    const item = allItems.find(i => String(i.id) === String(itemId)); 
     
-    const existing = cart.find(c => c.id == itemId);
+    if (!item) {
+        console.error('Item tidak ditemukan di allItems dengan ID:', itemId);
+        alert('Gagal menambahkan item: Item tidak valid atau data hilang.');
+        return;
+    }
+    
+    const existing = cart.find(c => String(c.id) === String(itemId));
     
     if (existing) {
         if (existing.quantity >= item.stock) {
@@ -279,13 +363,13 @@ function addToCart(itemId) {
 }
 
 function removeFromCart(itemId) {
-    cart = cart.filter(c => c.id != itemId);
+    cart = cart.filter(c => String(c.id) !== String(itemId));
     renderCart();
     updateTotals();
 }
 
 function updateQuantity(itemId, quantity) {
-    const item = cart.find(c => c.id == itemId);
+    const item = cart.find(c => String(c.id) === String(itemId));
     if (!item) return;
     
     if (quantity > item.maxStock) {
@@ -315,22 +399,22 @@ function renderCart() {
     }
     
     cartItems.innerHTML = cart.map(item => `
-        <div class="pos-cart-item">
+        <div class="p-3 border-bottom pos-cart-item">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="flex-grow-1">
                     <strong>${item.name}</strong><br>
-                    <small class="text-muted">${formatRupiah(item.price)} x ${item.quantity} ${item.unit}</small>
+                    <small class="text-muted">${formatRupiah(item.price)} / ${item.unit}</small>
                 </div>
-                <button class="btn btn-sm btn-danger" onclick="removeFromCart('${item.id}')">
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="removeFromCart('${item.id}')">
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
             <div class="d-flex justify-content-between align-items-center">
-                <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-secondary" onclick="updateQuantity('${item.id}', ${item.quantity - 1})">-</button>
-                    <input type="number" class="form-control text-center" style="width: 60px;" value="${item.quantity}" 
+                <div class="input-group input-group-sm" style="width: 130px;">
+                    <button class="btn btn-outline-secondary" type="button" onclick="updateQuantity('${item.id}', ${item.quantity - 1})">-</button>
+                    <input type="number" class="form-control text-center" style="width: 50px;" value="${item.quantity}" 
                            min="1" max="${item.maxStock}" onchange="updateQuantity('${item.id}', parseInt(this.value))">
-                    <button class="btn btn-outline-secondary" onclick="updateQuantity('${item.id}', ${item.quantity + 1})">+</button>
+                    <button class="btn btn-outline-secondary" type="button" onclick="updateQuantity('${item.id}', ${item.quantity + 1})">+</button>
                 </div>
                 <strong class="text-primary">${formatRupiah(item.price * item.quantity)}</strong>
             </div>
@@ -338,12 +422,16 @@ function renderCart() {
     `).join('');
 }
 
+// FUNGSI UTAMA UNTUK MENGHITUNG TOTAL
 function updateTotals() {
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    // Menggunakan '0' jika input kosong/invalid, agar hitungan tidak error
     const discountPct = parseFloat(discountPercent.value) || 0;
+    const payment = parseFloat(paymentAmount.value) || 0;
+    
     const discountAmount = subtotal * (discountPct / 100);
     const total = subtotal - discountAmount;
-    const payment = parseFloat(paymentAmount.value) || 0;
     const change = payment - total;
     
     document.getElementById('subtotalDisplay').textContent = formatRupiah(subtotal);
@@ -352,6 +440,7 @@ function updateTotals() {
     document.getElementById('changeDisplay').textContent = formatRupiah(Math.max(0, change));
 }
 
+// EVENT LISTENERS UNTUK DISKON DAN PEMBAYARAN
 discountPercent.addEventListener('input', updateTotals);
 paymentAmount.addEventListener('input', updateTotals);
 
@@ -359,9 +448,9 @@ btnClear.addEventListener('click', function() {
     if (confirm('Yakin ingin menghapus semua item di keranjang?')) {
         cart = [];
         renderCart();
-        updateTotals();
-        paymentAmount.value = '';
+        paymentAmount.value = ''; // Biarkan kosong
         discountPercent.value = 0;
+        updateTotals(); // Panggil terakhir untuk mereset tampilan total dan kembalian
     }
 });
 
@@ -417,14 +506,17 @@ btnCheckout.addEventListener('click', async function() {
             alert('Transaksi berhasil!\nNo: ' + result.sale_number);
             window.open('<?php echo url('pos/receipt.php?id='); ?>' + result.sale_id, '_blank');
             
+            // Reset keranjang dan form setelah sukses
             cart = [];
             renderCart();
-            updateTotals();
-            paymentAmount.value = '';
+            
+            paymentAmount.value = 0;
             discountPercent.value = 0;
             document.getElementById('customerId').value = '';
             
-            setTimeout(() => location.reload(), 1000);
+            updateTotals(); 
+            searchItem.focus(); // Fokus kembali ke pencarian
+
         } else {
             alert('Error: ' + result.message);
         }

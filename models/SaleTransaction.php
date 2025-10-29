@@ -4,8 +4,6 @@ require_once __DIR__ . '/Item.php';
 
 /**
  * Sale Transaction Model (POS)
- * MENGURANGI stok barang secara otomatis setelah transaksi sukses
- * CONTOH KODE UTAMA: Logika atomik untuk simpan transaksi dan kurangi stok
  */
 class SaleTransaction extends BaseModel {
     protected $table = 'sales_transactions';
@@ -31,20 +29,6 @@ class SaleTransaction extends BaseModel {
     
     /**
      * KODE INTI: Create sale transaction dengan pengurangan stok ATOMIK
-     * 
-     * Proses:
-     * 1. Begin transaction
-     * 2. Generate sale number
-     * 3. Insert header transaksi
-     * 4. Loop setiap item:
-     *    - Validasi stok tersedia
-     *    - Insert detail transaksi
-     *    - KURANGI stok (via Item::updateStock)
-     *    - Hitung profit
-     * 5. Update total di header
-     * 6. Commit transaction
-     * 
-     * Jika ada error di step manapun, semua di-rollback
      */
     public function createSale($headerData, $itemsData) {
         try {
@@ -73,7 +57,7 @@ class SaleTransaction extends BaseModel {
                     throw new Exception("Item ID {$item['item_id']} tidak ditemukan");
                 }
                 
-                // Validasi stok SEBELUM mengurangi
+                // Validasi stok SEBELUM mengurangi. Kolom di tabel items adalah stock_quantity.
                 if ($itemInfo['stock_quantity'] < $item['quantity']) {
                     throw new Exception("Stok {$itemInfo['item_name']} tidak cukup. Tersedia: {$itemInfo['stock_quantity']}");
                 }
@@ -86,13 +70,14 @@ class SaleTransaction extends BaseModel {
                 $detailData = [
                     'sale_id' => $saleId,
                     'item_id' => $item['item_id'],
-                    'quantity' => $item['quantity'],
+                    'quantity' => $item['quantity'], 
                     'selling_price' => $item['selling_price'],
                     'purchase_price' => $itemInfo['purchase_price'],
                     'subtotal' => $itemSubtotal,
                     'profit' => $itemProfit
                 ];
                 
+                // Menggunakan 'quantity' di query SQL
                 $sql = "INSERT INTO sale_details (sale_id, item_id, quantity, selling_price, purchase_price, subtotal, profit) 
                         VALUES (?, ?, ?, ?, ?, ?, ?)";
                 
@@ -162,17 +147,54 @@ class SaleTransaction extends BaseModel {
         return $header;
     }
     
+    // ✅ PERBAIKAN: Menggunakan 2 Query untuk mencegah duplikasi Net Sales
     /**
-     * Get daily sales summary
+     * Get daily sales summary (Total Transaksi, Net Sales/Revenue, Total Profit)
      */
     public function getDailySales($date = null) {
         if (!$date) {
             $date = date('Y-m-d');
         }
         
-        $sql = "SELECT * FROM v_daily_sales WHERE sale_date = ?";
-        $stmt = $this->db->query($sql, [$date]);
-        return $stmt->fetch();
+        // 1. Hitung Net Sales (Pendapatan) dan Total Transaksi dari tabel header (sales_transactions)
+        $sqlHeader = "SELECT 
+                COUNT(sale_id) as total_transactions,
+                SUM(total_amount) as net_sales
+                FROM {$this->table}
+                WHERE DATE(sale_date) = ?";
+        
+        $stmtHeader = $this->db->query($sqlHeader, [$date]);
+        $headerResult = $stmtHeader->fetch();
+        
+        // 2. Hitung Total Profit dari tabel detail (sale_details)
+        $sqlDetails = "SELECT 
+                SUM(sd.profit) as total_profit
+                FROM sale_details sd
+                INNER JOIN {$this->table} st ON sd.sale_id = st.sale_id
+                WHERE DATE(st.sale_date) = ?";
+
+        $stmtDetails = $this->db->query($sqlDetails, [$date]);
+        $detailResult = $stmtDetails->fetch();
+
+        $result = $headerResult ? array_merge($headerResult, $detailResult) : [
+            'total_transactions' => 0,
+            'net_sales' => 0,
+            'total_profit' => 0
+        ];
+        
+        // Penanganan nilai nol jika tidak ada transaksi
+        if (!$headerResult || $result['total_transactions'] == 0) {
+            return [
+                'total_transactions' => 0,
+                'net_sales' => 0,
+                'total_profit' => 0
+            ];
+        }
+        
+        // Memastikan total_profit adalah angka (meskipun null dari query)
+        $result['total_profit'] = $result['total_profit'] ?? 0;
+
+        return $result;
     }
     
     /**
@@ -199,10 +221,11 @@ class SaleTransaction extends BaseModel {
      * Get profit report
      */
     public function getProfitReport($startDate, $endDate) {
+        // PERBAIKAN: Menghapus komentar // ✅ Menggunakan sd.quantity
         $sql = "SELECT 
                 DATE(st.sale_date) as date,
                 SUM(sd.subtotal) as revenue,
-                SUM(sd.quantity * sd.purchase_price) as cost,
+                SUM(sd.quantity * sd.purchase_price) as cost, 
                 SUM(sd.profit) as gross_profit
                 FROM {$this->table} st
                 INNER JOIN sale_details sd ON st.sale_id = sd.sale_id
@@ -218,11 +241,12 @@ class SaleTransaction extends BaseModel {
      * Get top selling items
      */
     public function getTopSellingItems($startDate = null, $endDate = null, $limit = 10) {
+        // PERBAIKAN: Menghapus komentar // ✅ Menggunakan sd.quantity
         $sql = "SELECT 
                 i.item_id,
                 i.item_name,
                 i.sku,
-                SUM(sd.quantity) as total_sold,
+                SUM(sd.quantity) as total_sold, 
                 SUM(sd.subtotal) as total_revenue,
                 SUM(sd.profit) as total_profit
                 FROM sale_details sd

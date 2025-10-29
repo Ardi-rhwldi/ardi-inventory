@@ -9,7 +9,7 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'] ?? '';
-    $password = $_POST['password'] ?? '';
+    $password = $_POST['password'] ?? '';   
     
     if ($username && $password) {
         $db = Database::getInstance();
@@ -84,12 +84,6 @@ $pageTitle = 'Login';
                                     <i class="bi bi-box-arrow-in-right"></i> Login
                                 </button>
                             </form>
-                            
-                            <div class="mt-4 text-center">
-                                <small class="text-muted">
-                                    Default: <code>admin / admin123</code>
-                                </small>
-                            </div>
                         </div>
                     </div>
                 </div>

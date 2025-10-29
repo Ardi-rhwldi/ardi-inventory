@@ -67,7 +67,7 @@ class BaseModel {
         $placeholders = array_fill(0, count($columns), '?');
         
         $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ") 
-                VALUES (" . implode(', ', $placeholders) . ")";
+                 VALUES (" . implode(', ', $placeholders) . ")";
         
         $this->db->query($sql, array_values($data));
         return $this->db->lastInsertId();
